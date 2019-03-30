@@ -2,15 +2,26 @@ import torch
 from torch.autograd import Variable
 from torch.distributions.normal import Normal
 import torch.nn.functional as F
+import torchvision
 import numpy as np
 from agents import *
 from models import *
 
 n_workers = 80
 n_epochs = 100
+batch_size = 16
 mean0_std = 0 # 0 if no zero-mean epsilon
 
+trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=2)
+testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
+testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size, shuffle=False, num_workers=2)
 
+def imshow(img):
+    img = img / 2 + 0.5     # unnormalize
+    npimg = img.numpy()
+    plt.imshow(np.transpose(npimg, (1, 2, 0)))
+    plt.show()
 
 model = 
 optim = 
@@ -33,9 +44,9 @@ for t in range(n_epochs):
 	weight_ups = []
 	bias_ups = []
 	for i in range(n_workers):
-		batch =  # get random batch subset of dataset
-		batch_inp = 
-		batch_outp = 
+		dataiter = iter(trainloader)
+		batch_inp, batch_outp = dataiter.next()
+
 		worker_list[i].model = central.model
 		ups = worker_list[i].fwd_bkwd(batch_inp,batch_outp)
 		ups[0] += e_dist_w.sample()
@@ -53,5 +64,5 @@ for t in range(n_epochs):
 
 
 
-# TODO: get datasets configured here, write random batch selection code, write model & optim & loss
+# TODO: write model & optim & loss
 
