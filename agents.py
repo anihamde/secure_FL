@@ -10,7 +10,11 @@ class Central():
         self.model = model
         self.optim = optim
 
-    def update_model(self, ups): # ups is a tuple consisting of weight and bias grads
+    def update_model(self, ups):
+        """
+        Update the central model with the new gradients.
+        ups is a tuple consisting of weight and bias grads
+        """
         self.model.weight.zero_grad()
         self.model.weight.grad = ups[0]
         self.model.bias.grad = ups[1]
@@ -35,4 +39,4 @@ class Worker():
 
 class Agg():
     def __init__(self, rule):
-        self.rule = rule # rule should be a function that takes a list of gradient updates and aggregates them
+        self.rule = rule  # rule should be a function that takes a list of gradient updates and aggregates them
