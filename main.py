@@ -10,8 +10,8 @@ from agents import *
 from models import *
 import copy
 
-n_workers = 1
-n_epochs = 100
+n_workers = 20
+n_epochs = 10000
 batch_size = 16
 mean0_std = 0  # 0 if no zero-mean epsilon
 learning_rate = 0.01
@@ -60,7 +60,6 @@ for layer, paramval in central.model.named_parameters():
     e_dist_w.append(Normal(torch.zeros_like(paramval), mean0_std))
 
 for t in range(n_epochs):
-    print('Epoch {}'.format(t))
     weight_ups = []
     central.model.train()
     for i in range(n_workers):
@@ -83,12 +82,13 @@ for t in range(n_epochs):
     correct = 0
     central.model.eval()
 
-    for data in valloader:
-        inp, outp = data
+    if t%500 == 0:
+        for data in valloader:
+            inp, outp = data
 
-        preds = central.model(inp)
-        _, predicted_labs = torch.max(preds, 1)
-        total += outp.size(0)
-        correct += (predicted_labs == outp).sum().item()
+            preds = central.model(inp)
+            _, predicted_labs = torch.max(preds, 1)
+            total += outp.size(0)
+            correct += (predicted_labs == outp).sum().item()
 
-    print('Accuracy of the network on val set: {}'.format(100 * correct / float(total)))
+        print('Epoch {}, Accuracy of the network on val set: {}'.format(t, 100 * correct / float(total)))
