@@ -24,6 +24,9 @@ class Central():
         self.optim.step()
         self.optim.zero_grad()
 
+    def init_adv(self, model):
+        self.adv = model
+
 
 class Worker():
     def __init__(self, loss):
