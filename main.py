@@ -32,7 +32,7 @@ def imshow(img):
     plt.show()
 
 
-model =  # TODO
+model = FirstNet()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 loss = nn.CrossEntropyLoss()
 

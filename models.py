@@ -20,11 +20,10 @@ class Unit(nn.Module):
 
         return output
  
-class SimpleNet(nn.Module):
+class FirstNet(nn.Module):
     def __init__(self,num_classes=10):
-        super(SimpleNet,self).__init__()
+        super(FirstNet,self).__init__()
         
-        #Create 14 layers of the unit with max pooling in between
         self.unit1 = Unit(in_channels=3, out_channels=32, kernel_size=5)
         self.unit2 = Unit(in_channels=32, out_channels=32, kernel_size=4)
         self.unit3 = Unit(in_channels=32, out_channels=32)
@@ -38,7 +37,6 @@ class SimpleNet(nn.Module):
 
         self.avgpool = nn.AvgPool2d(kernel_size=4)
         
-        #Add all the units into the Sequential layer in exact order
         self.net = nn.Sequential(self.unit1, self.unit2, self.unit3, self.pool1, 
                                 self.unit4, self.unit5, self.unit6, self.unit7, 
                                 self.avgpool)
