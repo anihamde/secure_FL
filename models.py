@@ -35,17 +35,17 @@ class FirstNet(nn.Module):
         self.unit6 = Unit(in_channels=64, out_channels=64)
         self.unit7 = Unit(in_channels=64, out_channels=64)
 
-        self.avgpool = nn.AvgPool2d(kernel_size=4)
+        self.avgpool = nn.AvgPool2d(kernel_size=6)
         
         self.net = nn.Sequential(self.unit1, self.unit2, self.unit3, self.pool1, 
                                 self.unit4, self.unit5, self.unit6, self.unit7, 
                                 self.avgpool)
 
-        self.fc = nn.Linear(in_features=64,out_features=num_classes)
+        self.fc = nn.Linear(in_features=256,out_features=num_classes)
 
     def forward(self, input):
         output = self.net(input)
-        output = output.view(-1,64)
+        output = output.view(-1,256)
         output = self.fc(output)
 
         return output

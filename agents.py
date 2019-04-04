@@ -13,13 +13,16 @@ class Central():
     def update_model(self, ups):
         """
         Update the central model with the new gradients.
-        ups is a tuple consisting of weight and bias grads
+        ups is consisting of weight grads
         """
-        self.model.weight.zero_grad()
-        self.model.weight.grad = ups[0]
-        self.model.bias.grad = ups[1]
+
+        self.optim.zero_grad()
+        i = 0
+        for layer,paramval in self.model.named_parameters():
+            paramval.grad = ups[i]
+            i += 1
         self.optim.step()
-        self.model.weight.zero_grad()
+        self.optim.zero_grad()
 
 
 class Worker():
@@ -28,13 +31,16 @@ class Worker():
         self.loss = loss
 
     def fwd_bkwd(self, inp, outp):
-        self.model.weight.zero_grad()
-
         pred = self.model(inp)
         lossval = self.loss(pred, outp)
         lossval.backward()
 
-        return (self.model.weight.grad, self.model.bias.grad)
+        weightgrads = []
+
+        for layer,paramval in self.model.named_parameters():
+            weightgrads.append(paramval.grad)
+
+        return weightgrads
 
 
 class Agg():
