@@ -73,3 +73,18 @@ class SecondNet(nn.Module):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
+
+
+class AdvNet(nn.Module):
+    def __init__(self, input_dim, activation_function=F.relu):
+        super(AdvNet, self).__init__()
+        self.linear1 = nn.Linear(input_dim, 256)
+        self.linear2 = nn.Linear(256, 64)
+        self.linear3 = nn.Linear(64, 10)
+        self.activation_function = activation_function
+
+    def forward(self, x):
+        x = activation_function(self.linear1(x))
+        x = activation_function(self.linear2(x))
+        x = self.linear3(x)
+        return x
