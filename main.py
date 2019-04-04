@@ -10,7 +10,7 @@ from agents import *
 from models import *
 import copy
 
-n_workers = 2
+n_workers = 1
 n_epochs = 100
 batch_size = 16
 mean0_std = 0  # 0 if no zero-mean epsilon
@@ -21,8 +21,8 @@ transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
 
 trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
 valset = copy.deepcopy(trainset)
-trainset.data = trainset.data[0:49900]
-valset.data = valset.data[49900:50000]
+trainset.data = trainset.data[0:49000]
+valset.data = valset.data[49000:50000]
 
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True, num_workers=0)
 valloader = torch.utils.data.DataLoader(valset, batch_size=valset.data.shape[0], shuffle=True, num_workers=0)
@@ -37,15 +37,18 @@ def imshow(img):
     plt.show()
 
 
-model = FirstNet()
+# Setup Learning Model
+model = SecondNet()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 loss = nn.CrossEntropyLoss()
 
 
 def rule(ups_list):  # ups_list is a list of list of tensors
-    return [ torch.stack([x[i] for x in ups_list]).mean(0) for i in range(len(ups_list[0])) ]
+    return [torch.stack([x[i] for x in ups_list]).mean(0)
+            for i in range(len(ups_list[0]))]
 
 
+# Setup Federated Learning Framework
 central = Central(model, optimizer)
 worker_list = []
 for i in range(n_workers):
@@ -53,12 +56,11 @@ for i in range(n_workers):
 agg = Agg(rule)
 
 e_dist_w = []
-for layer,paramval in central.model.named_parameters():
-    e_dist_w.append( Normal(torch.zeros_like(paramval), mean0_std) )
-
+for layer, paramval in central.model.named_parameters():
+    e_dist_w.append(Normal(torch.zeros_like(paramval), mean0_std))
 
 for t in range(n_epochs):
-    print('Epoch %s'%t)
+    print('Epoch {}'.format(t))
     weight_ups = []
     central.model.train()
     for i in range(n_workers):
@@ -73,7 +75,7 @@ for t in range(n_epochs):
 
         weight_ups.append(ups)
 
-    weight_ups_FIN = agg.rule(weight_ups) # aggregate weight grad
+    weight_ups_FIN = agg.rule(weight_ups)  # aggregate weight grad
 
     central.update_model(weight_ups_FIN)
 
@@ -90,4 +92,3 @@ for t in range(n_epochs):
         correct += (predicted_labs == outp).sum().item()
 
     print('Accuracy of the network on val set: {}'.format(100 * correct / float(total)))
-

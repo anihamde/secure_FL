@@ -18,7 +18,7 @@ class Central():
 
         self.optim.zero_grad()
         i = 0
-        for layer,paramval in self.model.named_parameters():
+        for layer, paramval in self.model.named_parameters():
             paramval.grad = ups[i]
             i += 1
         self.optim.step()
@@ -36,10 +36,8 @@ class Worker():
         lossval.backward()
 
         weightgrads = []
-
-        for layer,paramval in self.model.named_parameters():
+        for layer, paramval in self.model.named_parameters():
             weightgrads.append(paramval.grad)
-
         return weightgrads
 
 
