@@ -30,20 +30,26 @@ testset = torchvision.datasets.CIFAR10(
 valset = copy.deepcopy(trainset)
 advset = copy.deepcopy(trainset)
 trainset.data = trainset.data[0:48000]
+trainset.targets = trainset.targets[0:48000]
+
 valset.data = valset.data[48000:49000]
+valset.targets = valset.targets[48000:49000]
+
 advset.data = advset.data[49000:50000]
+advset.targets = advset.targets[49000:50000]
 
 # Create Train, Validation, and Test Loaders
 sampler = torch.utils.data.RandomSampler(trainset, replacement=True)
+
 trainloader = torch.utils.data.DataLoader(
-    trainset, batch_size=batch_size, shuffle=False, sampler=sampler,
+    trainset, batch_size=batch_size, shuffle=False, #sampler=sampler,
     num_workers=0)
 
 valloader = torch.utils.data.DataLoader(
     valset, batch_size=valset.data.shape[0], shuffle=False, num_workers=0)
 
-advloader = torch.utils.data.DataLoader(
-    advset, batch_size=batch_size, shuffle=False, num_workers=0, sampler=sampler)
+# advloader = torch.utils.data.DataLoader(
+#     advset, batch_size=batch_size, shuffle=False, num_workers=0)
 
 testloader = torch.utils.data.DataLoader(
     testset, batch_size=batch_size, shuffle=False, num_workers=0)
@@ -95,6 +101,7 @@ for layer, paramval in central.model.named_parameters():
 for t in range(n_epochs):
     weight_ups = []
     central.model.train()
+
     dataiter = iter(trainloader)
 
     # Worker Loop
@@ -131,6 +138,7 @@ paramslist = [x.view(-1) for x in paramslist]
 paramslist = torch.cat(paramslist)
 
 learning_rate_adv = 0.01
+n_epochs_adv = 1
 adv_model = AdvNet(paramslist.shape[0])
 central.init_adv(adv_model)
 adv_optim = optim.Adam(central.adv.parameters(), lr=learning_rate_adv)
@@ -140,8 +148,8 @@ adv_dataset = []
 for j in range(len(advset.data)):
     optimizer.zero_grad()
 
-    x = advset.data[j]
-    y = advset.targets[j]
+    x = torch.Tensor(advset.data[j]).transpose(-1,-2).transpose(-2,-3).unsqueeze(0)
+    y = torch.LongTensor([advset.targets[j]])
 
     lossval = loss(central.model(x),y)
 
@@ -149,7 +157,7 @@ for j in range(len(advset.data)):
 
     weightgrads = []
     for layer, paramval in central.model.named_parameters():
-        weightgrads.append(paramval.grad)
+        weightgrads.append(paramval.grad.flatten())
 
     weightgrads = torch.cat(weightgrads)
 
@@ -158,20 +166,27 @@ for j in range(len(advset.data)):
 optimizer.zero_grad()
 
 
-# TODO make the adv_dataset batchable
-adv_dataset = 
+
+
+adv_x = torch.stack([x[0] for x in adv_dataset])
+adv_y = torch.stack([x[1] for x in adv_dataset])
+
+adv_dataset = torch.utils.data.TensorDataset(adv_x,adv_y)
+
+advloader = torch.utils.data.DataLoader(
+    adv_dataset, batch_size=batch_size, shuffle=True, #sampler=sampler,
+    num_workers=0)
 
 for t in range(n_epochs_adv):
     central.adv.train()
 
     adv_optim.zero_grad()
 
-    # TODO make the adv_dataset batchable
-    for batch in adv_dataset:
-        batch_inp, batch_outp = 
+    for i_batch, sample_batched in enumerate(advloader):
+        batch_inp, batch_outp = sample_batched
         preds = central.adv(batch_inp)
 
-        lossval = loss(preds,batch_outpp)
+        lossval = loss(preds,batch_outp.squeeze())
         lossval.backward()
 
     adv_optim.step()

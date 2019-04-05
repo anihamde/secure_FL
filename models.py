@@ -84,7 +84,7 @@ class AdvNet(nn.Module):
         self.activation_function = activation_function
 
     def forward(self, x):
-        x = activation_function(self.linear1(x))
-        x = activation_function(self.linear2(x))
+        x = self.activation_function(self.linear1(x))
+        x = self.activation_function(self.linear2(x))
         x = self.linear3(x)
         return x
