@@ -106,14 +106,29 @@ def test_phe():
     from phe import paillier
     print('Testing phe...')
 
-    public_key, private_key = paillier.generate_paillier_keypair()
-    nums = [2., 3.1, 18]
+    keyring = paillier.PaillierPrivateKeyring()
+    public_key, private_key = paillier.generate_paillier_keypair(keyring)
+
+    nums = np.array([2., 3.1, 18])
     encrypted_nums = [public_key.encrypt(x) + 1 for x in nums]
-    decrypted_nums = [private_key.decrypt(x) for x in encrypted_nums]
+    decrypted_nums = [keyring.decrypt(x) for x in encrypted_nums]
 
     print(nums)
     print(encrypted_nums)
+    print(np.array(encrypted_nums).dtype)
     print(decrypted_nums)
+
+    mat = np.array([[1., 2.], [3., 4.]])
+    mat_e = np.zeros(mat.shape, dtype=object)
+
+    print(mat)
+    print(mat_e)
+
+    for index, x in np.ndenumerate(mat):
+        mat_e[index] = public_key.encrypt(float(x))
+
+    print(mat_e)
+
 
 
 if __name__ == '__main__':

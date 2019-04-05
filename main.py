@@ -9,9 +9,10 @@ import numpy as np
 from agents import *
 from models import *
 import copy
+from phe import paillier
 
 n_workers = 2
-n_epochs = 1
+n_epochs = 2000
 batch_size = 4
 mean0_std = 0  # 0 if no zero-mean epsilon
 learning_rate = 0.001
@@ -42,7 +43,7 @@ advset.targets = advset.targets[49000:50000]
 sampler = torch.utils.data.RandomSampler(trainset, replacement=True)
 
 trainloader = torch.utils.data.DataLoader(
-    trainset, batch_size=batch_size, shuffle=False, #sampler=sampler,
+    trainset, batch_size=batch_size, shuffle=False, sampler=sampler,
     num_workers=0)
 
 valloader = torch.utils.data.DataLoader(
@@ -87,10 +88,10 @@ optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 loss = nn.CrossEntropyLoss()
 
 # Setup Federated Learning Framework
-central = Central(model, optimizer)
+central = Central(model, optimizer, encryption=False)
 worker_list = []
 for i in range(n_workers):
-    worker_list.append(Worker(loss))
+    worker_list.append(Worker(loss, keyring=central.get_keyring()))
 agg = Agg(rule)
 
 e_dist_w = []
