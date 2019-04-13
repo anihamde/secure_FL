@@ -16,6 +16,8 @@ class Central():
         self.keyring = None
         if encryption:
             self.keyring = paillier.PaillierPrivateKeyring()
+            self.public_key, self.private_key = (
+                paillier.generate_paillier_keypair(self.keyring, n_length=128))
 
     def update_model(self, ups):
         """
@@ -26,7 +28,20 @@ class Central():
         self.optim.zero_grad()
         i = 0
         for layer, paramval in self.model.named_parameters():
-            paramval.grad = ups[i]
+            if self.keyring:
+                # TODO: decrypt the ups[i]
+                print('Decrypting {} ...'.format(ups[i].shape))
+                update = np.zeros(ups[i].shape)
+                for index, x in np.ndenumerate(ups[i]):
+                    try:
+                        update[index] = self.private_key.decrypt(x)
+                    except OverflowError as e:
+                        print(x)
+
+                update = torch.FloatTensor(update)
+                paramval.grad = update
+            else:
+                paramval.grad = ups[i]
             i += 1
         self.optim.step()
         self.optim.zero_grad()
@@ -34,21 +49,20 @@ class Central():
     def init_adv(self, model):
         self.adv = model
 
-    def get_keyring(self):
+    def get_key(self):
         """
         Returns an encryption keyring to store public/private keys
         """
-        return self.keyring
+        if self.keyring:
+            return self.public_key
+        return None
 
 
 class Worker():
-    def __init__(self, loss, keyring=None):
+    def __init__(self, loss, key=None):
         self.model = None
         self.loss = loss
-        self.keyring = keyring
-        if keyring is not None:
-            self.public_key, self.private_key = (
-                paillier.generate_paillier_keypair(keyring, n_length=128))
+        self.key = key
 
     def fwd_bkwd(self, inp, outp):
         pred = self.model(inp)
@@ -57,15 +71,15 @@ class Worker():
 
         weightgrads = []
         for layer, paramval in self.model.named_parameters():
-            if self.keyring is not None:
+            if self.key is not None:
                 grads = np.array(paramval.grad)
-                print(grads.shape)
+                print('Encrypting {} ...'.format(grads.shape))
 
                 grads_e = np.zeros(grads.shape, dtype=object)
                 for index, x in np.ndenumerate(grads):
-                    grads_e[index] = self.public_key.encrypt(float(x))
+                    grads_e[index] = self.key.encrypt(float(x))
 
-                weightgrads.append(paramval.grad)
+                weightgrads.append(grads_e)
             else:
                 weightgrads.append(paramval.grad)
 
