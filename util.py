@@ -10,4 +10,3 @@ def plot_data(x, y, xlabel=None, ylabel=None, title=None, savefile="tmp.png"):
     ax.grid()
 
     plt.savefig(savefile)
-    # plt.show()
