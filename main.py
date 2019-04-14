@@ -11,12 +11,13 @@ from models import *
 from util import *
 import copy
 
-n_workers = 2
-n_epochs = 30000
+n_workers = 10
+n_epochs = 0
 batch_size = 16
-mean0_std = 1  # 0 if no zero-mean epsilon
+mean0_std = 1000  # 0 if no zero-mean epsilon
 learning_rate = 0.001
 encrypt = False
+save_data_and_plots = False
 
 transform = torchvision.transforms.Compose(
     [torchvision.transforms.ToTensor(),
@@ -125,12 +126,14 @@ for t in range(n_epochs):
         accuracies.append(accuracy)
 
 print('Done training')
-savefile = "plots/workers={}_batch_size={}_std={}_lr={}_epochs={}.png".format(
-    n_workers, batch_size, mean0_std, learning_rate, n_epochs)
-save_data(epochs, accuracies, savefile)
-plot_data(epochs, accuracies, xlabel="epoch", ylabel="accuracy",
-          savefile=savefile)
-print('Done saving data')
+
+if save_data_and_plots:
+    savefile = "plots/workers={}_batch_size={}_std={}_lr={}_epochs={}.png".format(
+        n_workers, batch_size, mean0_std, learning_rate, n_epochs)
+    save_data(epochs, accuracies, savefile)
+    plot_data(epochs, accuracies, xlabel="epoch", ylabel="accuracy",
+              savefile=savefile)
+    print('Done saving data')
 
 # Adversarial attack
 
@@ -139,7 +142,7 @@ paramslist = [x.view(-1) for x in paramslist]
 paramslist = torch.cat(paramslist)
 
 learning_rate_adv = 0.01
-n_epochs_adv = 0
+n_epochs_adv = 5
 adv_model = AdvNet(paramslist.shape[0])
 central.init_adv(adv_model)
 adv_optim = optim.Adam(central.adv.parameters(), lr=learning_rate_adv)
@@ -178,25 +181,7 @@ advloader = torch.utils.data.DataLoader(
     adv_dataset, batch_size=batch_size, shuffle=True, #sampler=sampler,
     num_workers=0)
 
-for t in range(n_epochs_adv):
-    central.adv.train()
-
-    adv_optim.zero_grad()
-
-    for i_batch, sample_batched in enumerate(advloader):
-        batch_inp, batch_outp = sample_batched
-        preds = central.adv(batch_inp)
-
-        lossval = loss(preds, batch_outp.squeeze())
-        lossval.backward()
-
-    adv_optim.step()
-
-
-
-
-
-
+# Spliced this block
 test_adv_dataset = []
 
 for j in range(len(testset.data)):
@@ -215,16 +200,56 @@ for j in range(len(testset.data)):
 
     weightgrads = torch.cat(weightgrads)
 
-    test_adv_dataset.append([weightgrads, y])
+    test_adv_dataset.append([weightgrads + Normal(torch.zeros_like(weightgrads), mean0_std).sample(), y])
 
 optimizer.zero_grad()
 
 test_adv_x = torch.stack([x[0] for x in test_adv_dataset])
 test_adv_y = torch.stack([x[1] for x in test_adv_dataset])
+# End splice
+
+
+
+for t in range(n_epochs_adv):
+    central.adv.eval()
+
+    pred_labels = torch.argmax(central.adv(test_adv_x),1)
+
+    total_correct = (pred_labels == test_adv_y.squeeze()).sum()
+
+    print('Sum: {}'.format(total_correct))
+    print('Length: {}'.format(len(pred_labels)))
+
+    print(float(total_correct)/float(len(pred_labels)))
+
+    print('Adv Epoch: {}'.format(t))
+
+    central.adv.train()
+
+    for i_batch, sample_batched in enumerate(advloader):
+        batch_inp, batch_outp = sample_batched
+        preds = central.adv(batch_inp)
+
+        lossval = loss(preds, batch_outp.squeeze())
+        lossval.backward()
+
+    adv_optim.step()
+
+    adv_optim.zero_grad()
+
+
+
+
+central.adv.eval()
 
 pred_labels = torch.argmax(central.adv(test_adv_x),1)
 
-print((pred_labels == test_adv_y.squeeze()).sum()/(len(pred_labels)+0.0))
+total_correct = (pred_labels == test_adv_y.squeeze()).sum()
+
+print('Sum: {}'.format(total_correct))
+print('Length: {}'.format(len(pred_labels)))
+
+print(float(total_correct)/float(len(pred_labels)))
 
 
 
