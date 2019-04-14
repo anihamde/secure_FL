@@ -29,7 +29,6 @@ class Central():
         i = 0
         for layer, paramval in self.model.named_parameters():
             if self.keyring:
-                # TODO: decrypt the ups[i]
                 print('Decrypting {} ...'.format(ups[i].shape))
                 update = np.zeros(ups[i].shape)
                 for index, x in np.ndenumerate(ups[i]):

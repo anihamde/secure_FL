@@ -11,10 +11,10 @@ from models import *
 from util import *
 import copy
 
-n_workers = 10
-n_epochs = 0
-batch_size = 4
-mean0_std = 0  # 0 if no zero-mean epsilon
+n_workers = 2
+n_epochs = 30000
+batch_size = 16
+mean0_std = 1  # 0 if no zero-mean epsilon
 learning_rate = 0.001
 encrypt = False
 
@@ -57,13 +57,6 @@ testloader = torch.utils.data.DataLoader(
     testset, batch_size=batch_size, shuffle=False, num_workers=0)
 
 
-def imshow(img):
-    img = img / 2 + 0.5     # unnormalize
-    npimg = img.numpy()
-    plt.imshow(np.transpose(npimg, (1, 2, 0)))
-    plt.show()
-
-
 def encrypted_rule(ups_list):
     return [np.stack([x[i] for x in ups_list]).mean(0)
             for i in range(len(ups_list[0]))]
@@ -72,21 +65,6 @@ def encrypted_rule(ups_list):
 def rule(ups_list):  # ups_list is a list of list of tensors
     return [torch.stack([x[i] for x in ups_list]).mean(0)
             for i in range(len(ups_list[0]))]
-
-
-def print_test_accuracy(model):
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for data in testloader:
-            images, labels = data
-            outputs = model(images)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-    print('Accuracy of the network on the 10000 test images: %d %%' % (
-          100 * correct / total))
-    return 100 * correct / total
 
 
 # Setup Learning Model
@@ -134,7 +112,6 @@ for t in range(n_epochs):
 
     # Aggregate Worker Gradients
     weight_ups_FIN = agg.rule(weight_ups)
-    # print(weight_ups_FIN)
 
     # Update Central Model
     central.update_model(weight_ups_FIN)
@@ -143,15 +120,17 @@ for t in range(n_epochs):
 
     if t % 500 == 0:
         print('Epoch: {}'.format(t))
-        accuracy = print_test_accuracy(model)
+        accuracy = print_test_accuracy(model, testloader)
         epochs.append(t)
         accuracies.append(accuracy)
 
 print('Done training')
+savefile = "plots/workers={}_batch_size={}_std={}_lr={}_epochs={}.png".format(
+    n_workers, batch_size, mean0_std, learning_rate, n_epochs)
+save_data(epochs, accuracies, savefile)
 plot_data(epochs, accuracies, xlabel="epoch", ylabel="accuracy",
-          savefile="plots/workers={}_batch_size={}_std={}_lr={}.png".format(
-            n_workers, batch_size, mean0_std, learning_rate))
-
+          savefile=savefile)
+print('Done saving data')
 
 # Adversarial attack
 
