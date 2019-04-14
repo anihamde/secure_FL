@@ -12,12 +12,12 @@ from util import *
 import copy
 
 n_workers = 10
-n_epochs = 0
+n_epochs = 5000
 batch_size = 16
-mean0_std = 1000  # 0 if no zero-mean epsilon
+mean0_std = 0 # 0 if no zero-mean epsilon
 learning_rate = 0.001
 encrypt = False
-save_data_and_plots = False
+save_data_and_plots = True
 
 transform = torchvision.transforms.Compose(
     [torchvision.transforms.ToTensor(),
@@ -142,7 +142,7 @@ paramslist = [x.view(-1) for x in paramslist]
 paramslist = torch.cat(paramslist)
 
 learning_rate_adv = 0.01
-n_epochs_adv = 5
+n_epochs_adv = 20
 adv_model = AdvNet(paramslist.shape[0])
 central.init_adv(adv_model)
 adv_optim = optim.Adam(central.adv.parameters(), lr=learning_rate_adv)
@@ -223,6 +223,8 @@ for t in range(n_epochs_adv):
     print(float(total_correct)/float(len(pred_labels)))
 
     print('Adv Epoch: {}'.format(t))
+
+    adv_optim.zero_grad()
 
     central.adv.train()
 
