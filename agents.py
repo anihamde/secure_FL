@@ -35,6 +35,9 @@ class Central():
             self.public_key, self.private_key = (
                 paillier.generate_paillier_keypair(self.keyring, n_length=128))
 
+    def __del__(self):
+        self.pool.close()
+
     def update_model(self, ups):
         """
         Update the central model with the new gradients.
@@ -70,9 +73,6 @@ class Central():
             return self.public_key
         return None
 
-    def destroy(self):
-        self.pool.destroy()
-
 
 class Worker():
     def __init__(self, loss, key=None):
@@ -80,6 +80,9 @@ class Worker():
         self.loss = loss
         self.key = key
         self.pool = mp.Pool(mp.cpu_count())
+
+    def __del__(self):
+        self.pool.close()
 
     def fwd_bkwd(self, inp, outp):
         pred = self.model(inp)
@@ -101,9 +104,6 @@ class Worker():
                 weightgrads.append(paramval.grad)
 
         return weightgrads
-
-    def destroy(self):
-        self.pool.close()
 
 
 class Agg():
