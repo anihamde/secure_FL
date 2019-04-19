@@ -74,6 +74,44 @@ class SecondNet(nn.Module):
         x = self.fc3(x)
         return x
 
+# http://parneetk.github.io/blog/cnn-cifar10/
+class PerformantNet1(nn.Module):
+    def __init__(self):
+        super(PerformantNet1, self).__init__()
+        self.conv1 = nn.Conv2d(3, 48, 3, padding = (2,2))
+        self.conv2 = nn.Conv2d(48, 48, 3, padding = (2,2))
+        self.pool1 = nn.MaxPool2d(2, 2)
+        self.dropout1 = nn.Dropout(p=0.25)
+        self.conv3 = nn.Conv2d(48, 96, 3, padding = (2,2))
+        self.conv4 = nn.Conv2d(96, 96, 3, padding = (2,2))
+        self.conv5 = nn.Conv2d(96, 192, 3, padding = (2,2))
+        self.conv6 = nn.Conv2d(192, 192, 3, padding = (2,2))
+        self.linear1 = nn.Linear(9408, 512)
+        self.dropout2 = nn.Dropout(p=0.5)
+        self.linear2 = nn.Linear(512, 256)
+        self.linear3 = nn.Linear(256, 10)
+
+    def forward(self, x):
+        bs = x.shape[0]
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = self.pool1(x)
+        x = self.dropout1(x)
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
+        x = self.pool1(x)
+        x = self.dropout1(x)
+        x = F.relu(self.conv5(x))
+        x = F.relu(self.conv6(x))
+        x = self.pool1(x)
+        x = self.dropout1(x)
+        x = x.view(bs,-1)
+        x = F.relu(self.linear1(x))
+        x = self.dropout2(x)
+        x = F.relu(self.linear2(x))
+        x = self.dropout2(x)
+        x = self.linear3(x)
+        return x
 
 class AdvNet(nn.Module):
     def __init__(self, input_dim, activation_function=F.relu):
