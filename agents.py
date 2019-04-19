@@ -5,6 +5,21 @@ from torch.distributions.multivariate_normal import MultivariateNormal as MVN
 import torch.nn.functional as F
 import numpy as np
 from phe import paillier
+import multiprocessing as mp
+
+
+def encrypt(args):
+    key, x = args
+    return key.encrypt(float(x))
+
+
+def decrypt(args):
+    key, x = args
+    try:
+        return key.decrypt(x)
+    except OverflowError:
+        print(x)
+    return 0.
 
 
 class Central():
@@ -13,6 +28,7 @@ class Central():
         self.optim = optim
 
         # Encryption-based Setup
+        self.pool = mp.Pool(mp.cpu_count())
         self.keyring = None
         if encryption:
             self.keyring = paillier.PaillierPrivateKeyring()
@@ -30,14 +46,12 @@ class Central():
         for layer, paramval in self.model.named_parameters():
             if self.keyring:
                 print('Decrypting {} ...'.format(ups[i].shape))
-                update = np.zeros(ups[i].shape)
-                for index, x in np.ndenumerate(ups[i]):
-                    try:
-                        update[index] = self.private_key.decrypt(x)
-                    except OverflowError as e:
-                        print(x)
-
+                nargs = [(
+                    self.private_key, x) for _, x in np.ndenumerate(ups[i])]
+                update = np.reshape(
+                    self.pool.map(decrypt, nargs), ups[i].shape)
                 update = torch.FloatTensor(update)
+
                 paramval.grad = update
             else:
                 paramval.grad = ups[i]
@@ -56,12 +70,16 @@ class Central():
             return self.public_key
         return None
 
+    def destroy(self):
+        self.pool.destroy()
+
 
 class Worker():
     def __init__(self, loss, key=None):
         self.model = None
         self.loss = loss
         self.key = key
+        self.pool = mp.Pool(mp.cpu_count())
 
     def fwd_bkwd(self, inp, outp):
         pred = self.model(inp)
@@ -72,17 +90,20 @@ class Worker():
         for layer, paramval in self.model.named_parameters():
             if self.key is not None:
                 grads = np.array(paramval.grad)
-                print('Encrypting {} ...'.format(grads.shape))
 
-                grads_e = np.zeros(grads.shape, dtype=object)
-                for index, x in np.ndenumerate(grads):
-                    grads_e[index] = self.key.encrypt(float(x))
+                print('Encrypting {} ...'.format(grads.shape))
+                nargs = [(self.key, x) for _, x in np.ndenumerate(grads)]
+                grads_e = np.reshape(
+                    self.pool.map(encrypt, nargs), grads.shape)
 
                 weightgrads.append(grads_e)
             else:
                 weightgrads.append(paramval.grad)
 
         return weightgrads
+
+    def destroy(self):
+        self.pool.close()
 
 
 class Agg():

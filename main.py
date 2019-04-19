@@ -10,14 +10,15 @@ from agents import *
 from models import *
 from util import *
 import copy
+import time
 
-n_workers = 10
+n_workers = 2
 n_epochs = 5000
 batch_size = 16
-mean0_std = 0 # 0 if no zero-mean epsilon
+mean0_std = 0  # 0 if no zero-mean epsilon
 learning_rate = 0.001
-encrypt = False
-save_data_and_plots = True
+encrypt = True
+save_data_and_plots = False
 
 transform = torchvision.transforms.Compose(
     [torchvision.transforms.ToTensor(),
@@ -92,6 +93,8 @@ accuracies = []
 
 # Training Loop
 for t in range(n_epochs):
+    first_time = time.time()
+
     weight_ups = []
     central.model.train()
 
@@ -119,6 +122,8 @@ for t in range(n_epochs):
 
     central.model.eval()
 
+    print('Epoch: {}, Time to complete: {}'.format(t, time.time() - first_time))
+
     if t % 500 == 0:
         print('Epoch: {}'.format(t))
         accuracy = print_test_accuracy(model, testloader)
@@ -126,6 +131,10 @@ for t in range(n_epochs):
         accuracies.append(accuracy)
 
 print('Done training')
+
+for i in range(n_workers):
+    worker_list[i].destroy()
+central.destroy()
 
 if save_data_and_plots:
     savefile = "plots/workers={}_batch_size={}_std={}_lr={}_epochs={}.png".format(

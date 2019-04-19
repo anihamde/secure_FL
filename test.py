@@ -9,6 +9,8 @@ import numpy as np
 from agents import *
 from models import *
 import copy
+import time
+import SharedArray as sa
 
 
 def test_training():
@@ -130,6 +132,75 @@ def test_phe():
     print(mat_e)
 
 
+class Test(object):
+    """docstring for ClassName"""
+    def __init__(self, arg):
+        super(Test, self).__init__()
+        self.arg = arg
+
+
+class Gradient(object):
+    """docstring for ClassName"""
+    def __init__(self):
+        super(Gradient, self).__init__()
+        self.grads = np.random.rand(400, 120)
+        self.grads_e = np.zeros(self.grads.shape, dtype=object)
+
+    def reset_grads_e(self):
+        self.grads_e = np.zeros(self.grads.shape, dtype=object)
+
+
+def encrypt(args):
+    key, index, x, grads_e = args
+    # grads_e[index] = key.encrypt(float(x))
+    return key.encrypt(float(x))
+
+    # b = sa.attach("shm://test")
+    # b[index] = Test(float(x))
+
+
+def test_mp():
+    from multiprocessing import Array, Manager, RawArray
+    import multiprocessing as mp
+    from phe import paillier
+
+    keyring = paillier.PaillierPrivateKeyring()
+    public_key, private_key = paillier.generate_paillier_keypair(keyring, n_length=128)
+
+    g = Gradient()
+    grads = g.grads
+    print(grads.shape)
+
+    begin_time = time.time()
+    grads_e = np.zeros(grads.shape, dtype=object)
+    for index, x in np.ndenumerate(grads):
+        grads_e[index] = public_key.encrypt(float(x))
+    end_time = time.time()
+
+    print('Base time: {}'.format(end_time - begin_time))
+
+    # Multiprocessing
+    grads_e = np.zeros(grads.shape, dtype=object)
+
+    pool = mp.Pool(mp.cpu_count())
+
+    grads_e = np.zeros(grads.shape, dtype=object)
+
+    # sa.delete("shm://test")
+    # a = sa.create("shm://test", grads.shape, dtype=object)
+    # print(a)
+
+    begin_time = time.time()
+    nargs = [(public_key, index, x, grads_e) for index, x in np.ndenumerate(grads)]
+    grads_e = np.reshape(pool.map(encrypt, nargs), grads.shape)
+    end_time = time.time()
+
+    print('MP time: {}'.format(end_time - begin_time))
+    pool.close()
+
+    # print(a)
+    # sa.delete("shm://test")
+
 
 if __name__ == '__main__':
-    test_phe()
+    test_mp()
