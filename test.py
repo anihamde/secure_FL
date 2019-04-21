@@ -10,7 +10,7 @@ from agents import *
 from models import *
 import copy
 import time
-import SharedArray as sa
+# import SharedArray as sa
 
 
 def test_training():

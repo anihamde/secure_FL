@@ -33,6 +33,8 @@ def print_test_accuracy(model, testloader):
     with torch.no_grad():
         for data in testloader:
             images, labels = data
+            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+            images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)

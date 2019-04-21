@@ -12,12 +12,12 @@ from util import *
 import copy
 import time
 
-n_workers = 2
-n_epochs = 5000
-batch_size = 16
+n_workers = 10
+n_epochs = 10000
+batch_size = 128
 mean0_std = 0  # 0 if no zero-mean epsilon
 learning_rate = 0.001
-encrypt = True
+encrypt = False
 save_data_and_plots = False
 
 transform = torchvision.transforms.Compose(
@@ -70,7 +70,10 @@ def rule(ups_list):  # ups_list is a list of list of tensors
 
 
 # Setup Learning Model
-model = SecondNet()
+model = PerformantNet1()
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print(device)
+model.to(device)
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 loss = nn.CrossEntropyLoss()
 
@@ -103,6 +106,7 @@ for t in range(n_epochs):
     # Worker Loop
     for i in range(n_workers):
         batch_inp, batch_outp = dataiter.next()
+        batch_inp, batch_outp = batch_inp.to(device), batch_outp.to(device)
 
         worker_list[i].model = central.model
 
@@ -122,7 +126,8 @@ for t in range(n_epochs):
 
     central.model.eval()
 
-    print('Epoch: {}, Time to complete: {}'.format(t, time.time() - first_time))
+    if t > 0 and t % 50 == 0:
+        print('Epoch: {}, Time to complete: {}'.format(t, time.time() - first_time))
 
     if t % 500 == 0:
         print('Epoch: {}'.format(t))
@@ -132,9 +137,6 @@ for t in range(n_epochs):
 
 print('Done training')
 
-for i in range(n_workers):
-    worker_list[i].destroy()
-central.destroy()
 
 if save_data_and_plots:
     savefile = "plots/workers={}_batch_size={}_std={}_lr={}_epochs={}.png".format(
