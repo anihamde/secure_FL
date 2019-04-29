@@ -1,3 +1,13 @@
+"""
+Securing Federated Learning: Obfuscation and Encryption
+
+Lev Grossman and Anirudh Suresh
+lgrossman@college.harvard.edu, anirudh_suresh@college.harvard.edu
+
+
+TODO: iid vs. non-idd data during training (split into class-specific)
+"""
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,10 +21,11 @@ from models import *
 from util import *
 import copy
 import time
+import sys
 
 n_workers = 10
-n_epochs = 10000
-batch_size = 128
+n_epochs = 0
+batch_size = 64
 mean0_std = 0  # 0 if no zero-mean epsilon
 learning_rate = 0.001
 encrypt = False
@@ -71,7 +82,9 @@ def rule(ups_list):  # ups_list is a list of list of tensors
 
 # Setup Learning Model
 model = PerformantNet1()
+# model = torchvision.models.vgg16_bn()
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+cpu_device = torch.device("cpu")
 print(device)
 model.to(device)
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
@@ -126,16 +139,23 @@ for t in range(n_epochs):
 
     central.model.eval()
 
-    if t > 0 and t % 50 == 0:
+    if t > 0 and t % 100 == 0:
         print('Epoch: {}, Time to complete: {}'.format(t, time.time() - first_time))
 
-    if t % 500 == 0:
-        print('Epoch: {}'.format(t))
+    if t % 250 == 0:
+        # print('Epoch: {}'.format(t))
         accuracy = print_test_accuracy(model, testloader)
         epochs.append(t)
         accuracies.append(accuracy)
 
 print('Done training')
+
+exit()
+
+total, used = check_mem()
+total, used = int(total), int(used)
+print(total), print(used)
+
 
 
 if save_data_and_plots:
@@ -148,6 +168,7 @@ if save_data_and_plots:
 
 # Adversarial attack
 
+
 paramslist = list(central.model.parameters())
 paramslist = [x.view(-1) for x in paramslist]
 paramslist = torch.cat(paramslist)
@@ -155,6 +176,7 @@ paramslist = torch.cat(paramslist)
 learning_rate_adv = 0.01
 n_epochs_adv = 20
 adv_model = AdvNet(paramslist.shape[0])
+adv_model.to(device)
 central.init_adv(adv_model)
 adv_optim = optim.Adam(central.adv.parameters(), lr=learning_rate_adv)
 
@@ -163,10 +185,14 @@ adv_dataset = []
 for j in range(len(advset.data)):
     optimizer.zero_grad()
 
-    x = torch.Tensor(advset.data[j]).transpose(-1, -2).transpose(-2, -3).unsqueeze(0)
-    y = torch.LongTensor([advset.targets[j]])
+    x = torch.Tensor(advset.data[j]).transpose(-1, -2).transpose(-2, -3).unsqueeze(0).cuda()
+    y = torch.LongTensor([advset.targets[j]]).cuda()
+    # x, y = x.to(device), y.to(device)
+    # x_cuda = x.to(device)
+    x = central.model(x)
+    # x = x.to(cpu_device)
 
-    lossval = loss(central.model(x), y)
+    lossval = loss(x, y)
 
     lossval.backward()
 
@@ -176,12 +202,22 @@ for j in range(len(advset.data)):
 
     weightgrads = torch.cat(weightgrads)
 
-    adv_dataset.append([weightgrads, y])
+    adv_dataset.append([weightgrads, y.to(cpu_device)])
+    del x, y
+    # del x_cuda
+    # del x
+
+    if j % 100 == 0:
+        torch.cuda.empty_cache()
+        total, used = check_mem()
+        total, used = int(total), int(used)
+        print(total), print(used)
+        print('emptied')
 
 optimizer.zero_grad()
 
-
-
+torch.cuda.empty_cache()
+print('HERE')
 
 adv_x = torch.stack([x[0] for x in adv_dataset])
 adv_y = torch.stack([x[1] for x in adv_dataset])
@@ -199,9 +235,13 @@ for j in range(len(testset.data)):
     optimizer.zero_grad()
 
     x = torch.Tensor(testset.data[j]).transpose(-1, -2).transpose(-2, -3).unsqueeze(0)
-    y = torch.LongTensor([testset.targets[j]]) 
+    y = torch.LongTensor([testset.targets[j]])
+    x = x.to(device)
+    x = central.model(x)
+    x = x.to(cpu_device)
+    # x, y = x.to(device), y.to(device)
 
-    lossval = loss(central.model(x),y)
+    lossval = loss(x, y)
 
     lossval.backward()
 
@@ -217,6 +257,8 @@ optimizer.zero_grad()
 
 test_adv_x = torch.stack([x[0] for x in test_adv_dataset])
 test_adv_y = torch.stack([x[1] for x in test_adv_dataset])
+
+# test_adv_x, test_adv_y = test_adv_x.to(device), test_adv_y.to(device)
 # End splice
 
 
@@ -241,6 +283,7 @@ for t in range(n_epochs_adv):
 
     for i_batch, sample_batched in enumerate(advloader):
         batch_inp, batch_outp = sample_batched
+        # batch_inp, batch_outp = batch_inp.to(device), batch_outp.to(device)
         preds = central.adv(batch_inp)
 
         lossval = loss(preds, batch_outp.squeeze())

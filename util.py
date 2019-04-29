@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+import os
 
 
 def save_data(x, y, savefile):
@@ -42,3 +43,10 @@ def print_test_accuracy(model, testloader):
     print('Accuracy of the network on the 10000 test images: %d %%' % (
           100 * correct / total))
     return 100 * correct / total
+
+
+def check_mem():
+
+    mem = os.popen('"nvidia-smi" --query-gpu=memory.total,memory.used --format=csv,nounits,noheader').read().split(",")
+
+    return mem

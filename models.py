@@ -4,6 +4,7 @@ from torch.autograd import Variable
 from torch.distributions.normal import Normal
 import torch.nn.functional as F
 import numpy as np
+import math
 
 
 class Unit(nn.Module):
