@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.autograd import Variable
 from torch.distributions.normal import Normal
+from torch.distributions.uniform import Uniform
 import torch.nn.functional as F
 import torchvision
 import numpy as np
@@ -24,12 +25,15 @@ import time
 import sys
 
 n_workers = 10
-n_epochs = 0
-batch_size = 64
+n_epochs = 10000
+batch_size = 128
 mean0_std = 0  # 0 if no zero-mean epsilon
+scale = 0
 learning_rate = 0.001
 encrypt = False
 save_data_and_plots = False
+load_model = False
+save_model = False
 
 transform = torchvision.transforms.Compose(
     [torchvision.transforms.ToTensor(),
@@ -82,6 +86,9 @@ def rule(ups_list):  # ups_list is a list of list of tensors
 
 # Setup Learning Model
 model = PerformantNet1()
+if load_model:
+    model.load_state_dict(torch.load("PerformantNet1_10epochs.pt"))
+    n_epochs = 0
 # model = torchvision.models.vgg16_bn()
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 cpu_device = torch.device("cpu")
@@ -100,9 +107,17 @@ if encrypt:
 else:
     agg = Agg(rule)
 
+# Add DP noise
+# noise_model = Normal(torch.zeros_like(paramval), mean0_std)
 e_dist_w = []
 for layer, paramval in central.model.named_parameters():
-    e_dist_w.append(Normal(torch.zeros_like(paramval), mean0_std))
+    if scale > 0:
+        lower = -1.0 * torch.ones_like(paramval) * scale
+        upper = 1.0 * torch.ones_like(paramval) * scale
+        e_dist_w.append(Uniform(lower, upper))
+    else:
+        e_dist_w.append(Normal(torch.zeros_like(paramval), mean0_std))
+
 
 epochs = []
 accuracies = []
@@ -124,6 +139,7 @@ for t in range(n_epochs):
         worker_list[i].model = central.model
 
         ups = worker_list[i].fwd_bkwd(batch_inp, batch_outp)
+        print('HERE')
 
         if not encrypt:
             for i in range(len(e_dist_w)):
@@ -132,13 +148,17 @@ for t in range(n_epochs):
         weight_ups.append(ups)
 
     # Aggregate Worker Gradients
+    print('HERE')
     weight_ups_FIN = agg.rule(weight_ups)
+    print('HERE')
 
     # Update Central Model
     central.update_model(weight_ups_FIN)
 
     central.model.eval()
 
+    print('Epoch: {}, Time to complete: {}'.format(t, time.time() - first_time))
+    exit()
     if t > 0 and t % 100 == 0:
         print('Epoch: {}, Time to complete: {}'.format(t, time.time() - first_time))
 
@@ -150,31 +170,44 @@ for t in range(n_epochs):
 
 print('Done training')
 
-exit()
+# central.model.to(cpu_device)
 
-total, used = check_mem()
-total, used = int(total), int(used)
-print(total), print(used)
-
+if save_model:
+    torch.save(central.model.state_dict(), "PerformantNet1_10epochs.pt")
 
 
 if save_data_and_plots:
-    savefile = "plots/workers={}_batch_size={}_std={}_lr={}_epochs={}.png".format(
-        n_workers, batch_size, mean0_std, learning_rate, n_epochs)
+    if scale > 0:
+        savefile = "plots/UPN_scale={}_workers={}_batch_size={}_lr={}_epochs={}.png".format(
+            scale, n_workers, batch_size, learning_rate, n_epochs)
+    else:
+        savefile = "plots/PN_std={}_workers={}_batch_size={}_lr={}_epochs={}.png".format(
+            mean0_std, n_workers, batch_size, learning_rate, n_epochs) 
     save_data(epochs, accuracies, savefile)
     plot_data(epochs, accuracies, xlabel="epoch", ylabel="accuracy",
               savefile=savefile)
     print('Done saving data')
 
-# Adversarial attack
 
+# exit()
+
+# Adversarial attack
+just_last = True
 
 paramslist = list(central.model.parameters())
+if just_last:
+    tmp = paramslist[:6]
+    tmp.append(paramslist[-1])
+    paramslist = tmp
 paramslist = [x.view(-1) for x in paramslist]
 paramslist = torch.cat(paramslist)
 
+print(paramslist.shape)
+print(paramslist)
+# exit()
+
 learning_rate_adv = 0.01
-n_epochs_adv = 20
+n_epochs_adv = 50
 adv_model = AdvNet(paramslist.shape[0])
 adv_model.to(device)
 central.init_adv(adv_model)
@@ -185,9 +218,9 @@ adv_dataset = []
 for j in range(len(advset.data)):
     optimizer.zero_grad()
 
-    x = torch.Tensor(advset.data[j]).transpose(-1, -2).transpose(-2, -3).unsqueeze(0).cuda()
-    y = torch.LongTensor([advset.targets[j]]).cuda()
-    # x, y = x.to(device), y.to(device)
+    x = torch.Tensor(advset.data[j]).transpose(-1, -2).transpose(-2, -3).unsqueeze(0)
+    y = torch.LongTensor([advset.targets[j]])
+    x, y = x.to(device), y.to(device)
     # x_cuda = x.to(device)
     x = central.model(x)
     # x = x.to(cpu_device)
@@ -200,29 +233,37 @@ for j in range(len(advset.data)):
     for layer, paramval in central.model.named_parameters():
         weightgrads.append(paramval.grad.flatten())
 
-    weightgrads = torch.cat(weightgrads)
+    if just_last:
+        # weightgrads = weightgrads[-1]
+        tmp = weightgrads[:6]
+        tmp.append(weightgrads[-1])
+        weightgrads = torch.cat(tmp)
+    else:
+        weightgrads = torch.cat(weightgrads)
+    # print(weightgrads)
 
     adv_dataset.append([weightgrads, y.to(cpu_device)])
-    del x, y
-    # del x_cuda
-    # del x
 
     if j % 100 == 0:
         torch.cuda.empty_cache()
         total, used = check_mem()
         total, used = int(total), int(used)
-        print(total), print(used)
-        print('emptied')
+        # print(total), print(used)
+        # print('emptied')
 
 optimizer.zero_grad()
 
 torch.cuda.empty_cache()
-print('HERE')
+
+total, used = check_mem()
+total, used = int(total), int(used)
+print(total), print(used)
+
 
 adv_x = torch.stack([x[0] for x in adv_dataset])
 adv_y = torch.stack([x[1] for x in adv_dataset])
 
-adv_dataset = torch.utils.data.TensorDataset(adv_x,adv_y)
+adv_dataset = torch.utils.data.TensorDataset(adv_x, adv_y)
 
 advloader = torch.utils.data.DataLoader(
     adv_dataset, batch_size=batch_size, shuffle=True, #sampler=sampler,
@@ -236,12 +277,12 @@ for j in range(len(testset.data)):
 
     x = torch.Tensor(testset.data[j]).transpose(-1, -2).transpose(-2, -3).unsqueeze(0)
     y = torch.LongTensor([testset.targets[j]])
-    x = x.to(device)
-    x = central.model(x)
-    x = x.to(cpu_device)
-    # x, y = x.to(device), y.to(device)
+    # x = x.to(device)
+    # x = central.model(x)
+    # x = x.to(cpu_device)
+    x, y = x.to(device), y.to(device)
 
-    lossval = loss(x, y)
+    lossval = loss(central.model(x), y)
 
     lossval.backward()
 
@@ -249,9 +290,32 @@ for j in range(len(testset.data)):
     for layer, paramval in central.model.named_parameters():
         weightgrads.append(paramval.grad.flatten())
 
-    weightgrads = torch.cat(weightgrads)
+    if just_last:
+        # weightgrads = weightgrads[-1]
+        tmp = weightgrads[:6]
+        tmp.append(weightgrads[-1])
+        weightgrads = torch.cat(tmp)
+    else:
+        weightgrads = torch.cat(weightgrads)
 
-    test_adv_dataset.append([weightgrads + Normal(torch.zeros_like(weightgrads), mean0_std).sample(), y])
+    # noise = Normal(torch.zeros_like(weightgrads), mean0_std).sample()
+
+    if scale > 0:
+        lower = -1.0 * torch.ones_like(weightgrads) * scale
+        upper = 1.0 * torch.ones_like(weightgrads) * scale
+        noise = Uniform(lower, upper).sample()
+    else:
+        noise = Normal(torch.zeros_like(weightgrads), mean0_std).sample()
+    test_adv_dataset.append([weightgrads + noise, y])
+
+
+
+    if j % 100 == 0:
+        torch.cuda.empty_cache()
+        total, used = check_mem()
+        total, used = int(total), int(used)
+        # print(total), print(used)
+        # print('emptied')
 
 optimizer.zero_grad()
 
@@ -283,7 +347,7 @@ for t in range(n_epochs_adv):
 
     for i_batch, sample_batched in enumerate(advloader):
         batch_inp, batch_outp = sample_batched
-        # batch_inp, batch_outp = batch_inp.to(device), batch_outp.to(device)
+        batch_inp, batch_outp = batch_inp.to(device), batch_outp.to(device)
         preds = central.adv(batch_inp)
 
         lossval = loss(preds, batch_outp.squeeze())

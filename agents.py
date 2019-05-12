@@ -28,15 +28,17 @@ class Central():
         self.optim = optim
 
         # Encryption-based Setup
-        self.pool = mp.Pool(mp.cpu_count())
+        self.pool = None
         self.keyring = None
         if encryption:
+            self.pool = mp.Pool(1)
             self.keyring = paillier.PaillierPrivateKeyring()
             self.public_key, self.private_key = (
                 paillier.generate_paillier_keypair(self.keyring, n_length=128))
 
     def __del__(self):
-        self.pool.close()
+        if self.pool is not None:
+            self.pool.close()
 
     def update_model(self, ups):
         """
@@ -47,7 +49,7 @@ class Central():
         self.optim.zero_grad()
         i = 0
         for layer, paramval in self.model.named_parameters():
-            if self.keyring:
+            if self.keyring is not None:
                 print('Decrypting {} ...'.format(ups[i].shape))
                 nargs = [(
                     self.private_key, x) for _, x in np.ndenumerate(ups[i])]
@@ -55,7 +57,7 @@ class Central():
                     self.pool.map(decrypt, nargs), ups[i].shape)
                 update = torch.FloatTensor(update)
 
-                paramval.grad = update
+                paramval.grad = update.cuda()
             else:
                 paramval.grad = ups[i]
             i += 1
@@ -79,10 +81,12 @@ class Worker():
         self.model = None
         self.loss = loss
         self.key = key
-        self.pool = mp.Pool(mp.cpu_count())
+        if self.key is not None:
+            self.pool = mp.Pool(1)
 
     def __del__(self):
-        self.pool.close()
+        if self.key is not None:
+            self.pool.close()
 
     def fwd_bkwd(self, inp, outp):
         pred = self.model(inp)
@@ -92,7 +96,7 @@ class Worker():
         weightgrads = []
         for layer, paramval in self.model.named_parameters():
             if self.key is not None:
-                grads = np.array(paramval.grad)
+                grads = np.array(paramval.grad.cpu())
 
                 print('Encrypting {} ...'.format(grads.shape))
                 nargs = [(self.key, x) for _, x in np.ndenumerate(grads)]
