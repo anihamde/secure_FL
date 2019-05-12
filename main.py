@@ -5,7 +5,7 @@ Lev Grossman and Anirudh Suresh
 lgrossman@college.harvard.edu, anirudh_suresh@college.harvard.edu
 
 
-TODO: iid vs. non-idd data during training (split into class-specific)
+TODO: iid vs. non-iid data during training (split into class-specific)
 """
 
 import torch
@@ -25,7 +25,7 @@ import time
 import sys
 
 n_workers = 10
-n_epochs = 10000
+n_epochs = 1000
 batch_size = 128
 mean0_std = 0  # 0 if no zero-mean epsilon
 scale = 0
@@ -34,6 +34,7 @@ encrypt = False
 save_data_and_plots = False
 load_model = False
 save_model = False
+noniid = False
 
 transform = torchvision.transforms.Compose(
     [torchvision.transforms.ToTensor(),
@@ -58,11 +59,23 @@ advset.data = advset.data[49000:50000]
 advset.targets = advset.targets[49000:50000]
 
 # Create Train, Validation, and Test Loaders
-sampler = torch.utils.data.RandomSampler(trainset, replacement=True)
+if noniid:
+    def noniid_batch_trainset(trainset, c):
+        indices = (np.array(trainset.targets) == c)
+        trainset2 = copy.deepcopy(trainset)
+        trainset2.data = trainset2.data[indices]
+        trainset2.targets = [c for i in range(len(indices))]
 
-trainloader = torch.utils.data.DataLoader(
-    trainset, batch_size=batch_size, shuffle=False, sampler=sampler,
-    num_workers=0)
+        return trainset2
+
+    trainsets = [noniid_batch_trainset(trainset,i) for i in set(trainset.targets)]
+else:
+    trainsets = [trainset]
+
+samplers = [torch.utils.data.RandomSampler(i, replacement=True) for i in trainsets]
+trainloaders = [torch.utils.data.DataLoader(
+    trainsets[i], batch_size=batch_size, shuffle=False, sampler=samplers[i],
+    num_workers=0) for i in range(len(trainsets))]
 
 valloader = torch.utils.data.DataLoader(
     valset, batch_size=valset.data.shape[0], shuffle=False, num_workers=0)
@@ -129,17 +142,19 @@ for t in range(n_epochs):
     weight_ups = []
     central.model.train()
 
-    dataiter = iter(trainloader)
+    dataiters = [iter(trainloader) for trainloader in trainloaders]
 
     # Worker Loop
     for i in range(n_workers):
+        k = np.random.randint(0, len(dataiters))
+        dataiter = dataiters[k]
+
         batch_inp, batch_outp = dataiter.next()
         batch_inp, batch_outp = batch_inp.to(device), batch_outp.to(device)
 
         worker_list[i].model = central.model
 
         ups = worker_list[i].fwd_bkwd(batch_inp, batch_outp)
-        print('HERE')
 
         if not encrypt:
             for i in range(len(e_dist_w)):
@@ -148,17 +163,13 @@ for t in range(n_epochs):
         weight_ups.append(ups)
 
     # Aggregate Worker Gradients
-    print('HERE')
     weight_ups_FIN = agg.rule(weight_ups)
-    print('HERE')
 
     # Update Central Model
     central.update_model(weight_ups_FIN)
 
     central.model.eval()
 
-    print('Epoch: {}, Time to complete: {}'.format(t, time.time() - first_time))
-    exit()
     if t > 0 and t % 100 == 0:
         print('Epoch: {}, Time to complete: {}'.format(t, time.time() - first_time))
 
